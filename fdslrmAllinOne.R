@@ -556,10 +556,10 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
         # instead of mixed(y,X,Z,dim,s20,method);
         # ======================================================================
         
-        require(matrixcalc)
-        require(gnm)
-        require(Matrix)
-        require(pracma)
+        library(matrixcalc)
+        library(gnm)
+        library(Matrix)
+        library(pracma)
         # The required input parameters
         yy<-t(y)%*%y
         Xy<-t(X)%*%y
@@ -627,7 +627,6 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
                 s20[fk] <- 100 * .Machine$double.eps * rep(1, length(fk))
                 warning("Priors in s20 are negative or zeros !CHANGED!")
         }
-        # sig0 <- s20
         s21 <- s20
         ZMZ <- ZZ - t(XZ) %*% MPinv(XX) %*% XZ # ZMZ = ZZ - XZ' * (XX \ XZ)
         q <- rep(0, r+1)
@@ -638,30 +637,22 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
         crit <- 1
         weight <- rep(1, k)
         small <- 0.1
-        # H <- matrix()
-        # q <- vector()
         
         while (crit > epss) {
                 loops <- loops + 1
                 sigaux <- s20
                 s0 <- s20[r+1]
-                # d <- s20[1] * rep(1, dim[1])
                 d <- rep(1, sum(dim))
                 id0 <- 0
-                if(r > 1) {
-                        for(i in 1:r) {
-                                # d <- c(d, s20[i] * rep(1, dim[i]))
-                                id <- 1:dim[i]
-                                d[id0 + id] <- s20[i] * d[id0 + id]
-                                id0 <- id0 + dim[i]
-                        }     
-                }
+                for(i in 1:r) {
+                        id <- 1:dim[i]
+                        d[id0 + id] <- s20[i] * d[id0 + id]
+                        id0 <- id0 + dim[i]
+                }     
                 
                 D <- diag(d)
                 V <- s0 * Im + ZZ %*% D
-                # W <- s0 * solve(V)
                 W <- s0 * mldivide(V, Im)
-                # T <- solve(Im + ZMZ %*% D / s0)
                 T <- mldivide((Im + ZMZ %*% D / s0), Im)
                 
                 
@@ -684,13 +675,11 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
                 v <- bb[(k+1):(k+m)]
                 u <- D %*% v
                 
-                v <- bb[(k+1):(k+m)]
-                u <- D %*% v
                 # ======================================================================
                 # ESTIMATION OF ML AND REML OF VARIANCE COMPONENTS 
                 # ======================================================================
                 iupp <- 0
-                q <- rep(1, r+1)
+                q <- rep(0, r+1)
                 for(i in 1:r){
                         ilow<-iupp+1
                         iupp<-iupp+dim[i]
@@ -718,21 +707,13 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
                 if(method=="1") {
                         crit<-sqrt(sum((sigaux-s20)^2))
                         H<-matrix(nrow = r+1,ncol = r+1)
-                        # q<-vector()
                 } else if(method=="2") {
                         s20<-s21
                         crit<-sqrt(sum((sigaux-s20)^2))
                         H<-matrix(nrow = r+1,ncol = r+1)
-                        # q<-vector()
                 } else {
                         crit <- 0 
                 }
-                # stop()
-                # if(loops==max_iter) {
-                #         warning("Maximum number of iterations reached.")
-                #         break
-                # }
-                
                 
         }
         # ======================================================================
@@ -785,12 +766,10 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
         # BLUE, BLUP, THE MME'S C MATRIX AND THE LOG-LIKELIHOOD
         # ======================================================================
         s0<-s2[r+1]
-        # d<-s2[1]*rep(1,dim[1])
         d <- rep(1, sum(dim))
         id0 <- 0
         if(r>1) {
                 for(i in 1:r) {
-                        # d<-c(d,s2[i]*rep(1,dim[i]))
                         id <- 1:dim[i]
                         d[id0+id] <- s20[i] * d[id0 + id]
                         id0 <- id0 + dim[i]
@@ -799,9 +778,7 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
         
         D<-diag(d)
         V<-s0*Im+ZZ%*%D
-        # W<-s0*solve(V)
         W <- s0 * mldivide(V, Im)
-        # T<-solve(Im+ZMZ%*%D/s0)
         T <- mldivide(Im + ZMZ %*% D / s0, Im)
         if(length(lambda) == 0) {
                 A<-rbind(cbind(XX,XZ%*%D),cbind(t(XZ),V))
