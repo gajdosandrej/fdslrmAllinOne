@@ -556,26 +556,26 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
         # instead of mixed(y,X,Z,dim,s20,method);
         # ======================================================================
         
-        library(matrixcalc)
-        library(gnm)
-        library(Matrix)
-        library(pracma)
+        require(matrixcalc)
+        require(gnm)
+        require(Matrix)
+        require(pracma)
         # The required input parameters
-        yy<-t(y)%*%y
-        Xy<-t(X)%*%y
-        Zy<-t(Z)%*%y
-        XX<-t(X)%*%X
-        XZ<-t(X)%*%Z
-        ZZ<-t(Z)%*%Z
-        a<-rbind(Xy,Zy)
+        yy <- t(y)%*%y
+        Xy <- t(X)%*%y
+        Zy <- t(Z)%*%y
+        XX <- t(X)%*%X
+        XZ <- t(X)%*%Z
+        ZZ <- t(Z)%*%Z
+        a <- rbind(Xy,Zy)
         # Other input parameters
-        n<-length(y)
-        k<-ncol(X)
-        m<-ncol(Z)
-        rx<-rankMatrix(XX)
-        r<-length(s20)-1
-        Im<-diag(rep(1,m))
-        loops<-0        
+        n <- length(y)
+        k <- ncol(X)
+        m <- ncol(Z)
+        rx <- rankMatrix(XX)
+        r <- length(s20)-1
+        Im <- diag(rep(1,m))
+        loops <- 0        
         
         ## Method 0 (No estimation of variance components)        
         # ======================================================================
@@ -584,13 +584,14 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
         # Output is BLUE(b), BLUP(u), and C,
         # calculated at chosen values s20
         # ======================================================================
-        if(method=="0") {
-                s0=s20[r+1]
-                d<-s20[1]*rep(1,dim[1])
+        if(method == "0") {
+                s0 <- s20[r+1]
+                d <- rep(1,dim[1])
                 id0 <- 0
-                if(r>1) {
-                        for(i in 2:r) {
-                                d <- c(d, s20[i] * rep(1, dim[i]))
+                if(r >= 1) {
+                        for(i in 1:r) {
+                                id <- 1:dim[i]
+                                d[id0 + id] <- s20[i] * d[id0 + id]
                                 id0 <- id0 + dim[i]
                         }
                 }
@@ -598,18 +599,20 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
                 V <- s0 * Im + ZZ %*% D
                 A <- rbind(cbind(XX, XZ %*% D), cbind(t(XZ), V))
                 A <- MPinv(A) # A = A \ Ikm
-                
-                C <- s0 * rbind(cbind(A[1:k,1:k], A[1:k,(k+1):(k+m)]),
-                                cbind(D %*% A[(k+1):(k+m),1:k], D %*% A[(k+1):(k+m), (k+1):(k+m)]))  
+                if(k == 1) {
+                        C <- s0*rbind(cbind(A[1:k,1:k],t(A[1:k,(k+1):(k+m)])),cbind(D%*%A[(k+1):(k+m),1:k],D%*%A[(k+1):(k+m),(k+1):(k+m)]))
+                } else {
+                        C <- s0*rbind(cbind(A[1:k,1:k],A[1:k,(k+1):(k+m)]),cbind(D%*%A[(k+1):(k+m),1:k],D%*%A[(k+1):(k+m),(k+1):(k+m)]))
+                }
                 bb <- A %*% a
                 b <- bb[1:k]
                 v <- bb[(k+1):(k+m)]
                 u <- D %*% v
                 Aux <- yy-t(b) %*% Xy - t(u) %*% Zy
                 if(all(s20 != 0)) {
-                        loglik<-(-1)*((n + m) * log(2 * pi) + n * log(s0) + log(prod(d)) + Aux / s0) / 2
+                        loglik <- (-1)*((n + m) * log(2 * pi) + n * log(s0) + log(prod(d)) + Aux / s0) / 2
                 } else {
-                        loglik<-numeric()
+                        loglik <- numeric()
                 }
                 
                 s2 <- s20
@@ -630,6 +633,7 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
         s21 <- s20
         ZMZ <- ZZ - t(XZ) %*% MPinv(XX) %*% XZ # ZMZ = ZZ - XZ' * (XX \ XZ)
         q <- rep(0, r+1)
+        H <- matrix(nrow = r+1,ncol = r+1)
         # ======================================================================
         # START OF THE MAIN LOOP
         # ======================================================================
@@ -637,6 +641,8 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
         crit <- 1
         weight <- rep(1, k)
         small <- 0.1
+        # H <- matrix()
+        # q <- vector()
         
         while (crit > epss) {
                 loops <- loops + 1
@@ -644,15 +650,19 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
                 s0 <- s20[r+1]
                 d <- rep(1, sum(dim))
                 id0 <- 0
-                for(i in 1:r) {
-                        id <- 1:dim[i]
-                        d[id0 + id] <- s20[i] * d[id0 + id]
-                        id0 <- id0 + dim[i]
-                }     
+                if(r >= 1) {
+                        for(i in 1:r) {
+                                id <- 1:dim[i]
+                                d[id0 + id] <- s20[i] * d[id0 + id]
+                                id0 <- id0 + dim[i]
+                        }     
+                }
                 
                 D <- diag(d)
                 V <- s0 * Im + ZZ %*% D
+                # W <- s0 * solve(V)
                 W <- s0 * mldivide(V, Im)
+                # T <- solve(Im + ZMZ %*% D / s0)
                 T <- mldivide((Im + ZMZ %*% D / s0), Im)
                 
                 
@@ -679,41 +689,47 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
                 # ESTIMATION OF ML AND REML OF VARIANCE COMPONENTS 
                 # ======================================================================
                 iupp <- 0
-                q <- rep(0, r+1)
+                q <- rep(1, r+1)
                 for(i in 1:r){
-                        ilow<-iupp+1
-                        iupp<-iupp+dim[i]
-                        Wii<-W[ilow:iupp,ilow:iupp]
-                        Tii<-T[ilow:iupp,ilow:iupp]
-                        w<-u[ilow:iupp]
-                        ww<-t(w)%*%w
-                        q[i]<-ww/(s20[i]*s20[i])
-                        s20[i]<-ww/(dim[i]-matrix.trace(as.matrix(Wii)))
+                        ilow <- iupp+1
+                        iupp <- iupp+dim[i]
+                        Wii <- W[ilow:iupp,ilow:iupp]
+                        Tii <- T[ilow:iupp,ilow:iupp]
+                        w <- u[ilow:iupp]
+                        ww <- t(w)%*%w
+                        q[i] <- ww/(s20[i]*s20[i])
+                        s20[i] <- ww/(dim[i]-matrix.trace(as.matrix(Wii)))
                         if(!is.finite(s20[i])) {
                                 s20[i] <- .Machine$double.eps
                         }
-                        s21[i]<-ww/(dim[i]-matrix.trace(as.matrix(Tii)))
+                        s21[i] <- ww/(dim[i]-matrix.trace(as.matrix(Tii)))
                         if(!is.finite(s21[i])) {
                                 s21[i] <- .Machine$double.eps
                         }
                 }
                 
-                Aux<-yy-t(b)%*%Xy-t(u)%*%Zy
-                Aux1<-Aux-(t(u)%*%v)*s20[r+1]
-                q[r+1]<-Aux1/(s20[r+1]*s20[r+1])
-                s20[r+1]<-Aux/n
-                s21[r+1]<-Aux/(n-rx)
+                Aux <- yy-t(b)%*%Xy-t(u)%*%Zy
+                Aux1 <- Aux-(t(u)%*%v)*s20[r+1]
+                q[r+1] <- Aux1/(s20[r+1]*s20[r+1])
+                s20[r+1] <- Aux/n
+                s21[r+1] <- Aux/(n-rx)
                 
-                if(method=="1") {
-                        crit<-sqrt(sum((sigaux-s20)^2))
-                        H<-matrix(nrow = r+1,ncol = r+1)
-                } else if(method=="2") {
-                        s20<-s21
-                        crit<-sqrt(sum((sigaux-s20)^2))
-                        H<-matrix(nrow = r+1,ncol = r+1)
+                if(method == "1") {
+                        crit <- sqrt(sum((sigaux-s20)^2))
+                        H <- matrix(nrow = r+1,ncol = r+1)
+                } else if(method == "2") {
+                        s20 <- s21
+                        crit <- sqrt(sum((sigaux-s20)^2))
+                        H <- matrix(nrow = r+1,ncol = r+1)
                 } else {
                         crit <- 0 
                 }
+                # stop()
+                # if(loops==max_iter) {
+                #         warning("Maximum number of iterations reached.")
+                #         break
+                # }
+                
                 
         }
         # ======================================================================
@@ -722,53 +738,55 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
         # COMPUTING OF THE MINQE CRITERIAL MATRIX H
         # ======================================================================
         if (method=="3" || method=="4") {
-                H<-diag(r+1)
+                H <- diag(r+1)
                 if(method=="4") {
-                        W<-T
-                        H[r+1,r+1]<-(n-rx-m+matrix.trace(W%*%W))/(sigaux[r+1]*sigaux[r+1]) #%VW
+                        W <- T
+                        H[r+1,r+1] <- (n-rx-m+matrix.trace(W%*%W))/(sigaux[r+1]*sigaux[r+1]) #%VW
                 } else {
-                        H[r+1,r+1]<-(n-m+matrix.trace(W%*%W))/(sigaux[r+1]*sigaux[r+1])
+                        H[r+1,r+1] <- (n-m+matrix.trace(W%*%W))/(sigaux[r+1]*sigaux[r+1])
                 }
                 
-                iupp<-0
+                iupp <- 0
                 for(i in 1:r) {
-                        ilow<-iupp+1
-                        iupp<-iupp+dim[i]
-                        trii<-matrix.trace(as.matrix(W[ilow:iupp,ilow:iupp]))
-                        trsum<-0
-                        jupp<-0
+                        ilow <- iupp+1
+                        iupp <- iupp+dim[i]
+                        trii <- matrix.trace(as.matrix(W[ilow:iupp,ilow:iupp]))
+                        trsum <- 0
+                        jupp <- 0
                         for(j in 1:r) {
-                                jlow<-jupp+1
-                                jupp<-jupp+dim[j]
-                                tr<-matrix.trace(as.matrix(W[ilow:iupp,jlow:jupp]%*%W[jlow:jupp,ilow:iupp]))
-                                trsum<-trsum+tr
-                                H[i,j]<-(1*(i==j)*(dim[i]-2*trii)+tr)/(sigaux[i]*sigaux[j])
+                                jlow <- jupp+1
+                                jupp <- jupp+dim[j]
+                                tr <- matrix.trace(as.matrix(W[ilow:iupp,jlow:jupp]%*%W[jlow:jupp,ilow:iupp]))
+                                trsum <- trsum+tr
+                                H[i,j] <- (1*(i==j)*(dim[i]-2*trii)+tr)/(sigaux[i]*sigaux[j])
                         }
-                        H[r+1,i]<-(trii-trsum)/(sigaux[r+1]*sigaux[i])
-                        H[i,r+1]<-H[r+1,i]
+                        H[r+1,i] <- (trii-trsum)/(sigaux[r+1]*sigaux[i])
+                        H[i,r+1] <- H[r+1,i]
                 }
         }
+        s2 <- numeric()
+        
         # ======================================================================
         # MINQE(I), MINQE(U,I), ML, AND REML
         # ======================================================================
         if(method=="3" || method=="4") {
-                s2<-MPinv(H)%*%q
-                loglik<-numeric()
+                s2 <- MPinv(H)%*%q
+                loglik <- numeric()
         } else {
-                s2<-s20
+                s2<- s20
         }
         
-        fk<-which(s2<10*epss)
-        if(length(fk)>0) {
+        fk <- which(s2 < 10*epss)
+        if(length(fk) > 0) {
                 warning("Estimated variance components are negative or zeros!")
         }
         # ======================================================================
         # BLUE, BLUP, THE MME'S C MATRIX AND THE LOG-LIKELIHOOD
         # ======================================================================
-        s0<-s2[r+1]
+        s0 <- s2[r+1]
         d <- rep(1, sum(dim))
         id0 <- 0
-        if(r>1) {
+        if(r >= 1) {
                 for(i in 1:r) {
                         id <- 1:dim[i]
                         d[id0+id] <- s20[i] * d[id0 + id]
@@ -776,33 +794,34 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
                 }
         }
         
-        D<-diag(d)
-        V<-s0*Im+ZZ%*%D
+        D <- diag(d)
+        V <- s0*Im+ZZ%*%D
+        # W<-s0*solve(V)
         W <- s0 * mldivide(V, Im)
+        # T<-solve(Im+ZMZ%*%D/s0)
         T <- mldivide(Im + ZMZ %*% D / s0, Im)
         if(length(lambda) == 0) {
-                A<-rbind(cbind(XX,XZ%*%D),cbind(t(XZ),V))
-                A<-MPinv(A)
+                A <- rbind(cbind(XX,XZ%*%D),cbind(t(XZ),V))
+                A <- MPinv(A)
         } else {
                 # Regularized version
-                A<-rbind(cbind(XX + diag(weight) * lambda, XZ%*%D),cbind(t(XZ),V))
-                A<-MPinv(A)
+                A <- rbind(cbind(XX + diag(weight) * lambda, XZ%*%D),cbind(t(XZ),V))
+                A <- MPinv(A)
         }
         
         if(k==1) {
-                C<-s0*rbind(cbind(A[1:k,1:k],t(A[1:k,(k+1):(k+m)])),cbind(D%*%A[(k+1):(k+m),1:k],D%*%A[(k+1):(k+m),(k+1):(k+m)]))
-                
+                C <- s0*rbind(cbind(A[1:k,1:k],t(A[1:k,(k+1):(k+m)])),cbind(D%*%A[(k+1):(k+m),1:k],D%*%A[(k+1):(k+m),(k+1):(k+m)]))
         } else {
-                C<-s0*rbind(cbind(A[1:k,1:k],A[1:k,(k+1):(k+m)]),cbind(D%*%A[(k+1):(k+m),1:k],D%*%A[(k+1):(k+m),(k+1):(k+m)]))
-                
+                C <- s0*rbind(cbind(A[1:k,1:k],A[1:k,(k+1):(k+m)]),cbind(D%*%A[(k+1):(k+m),1:k],D%*%A[(k+1):(k+m),(k+1):(k+m)]))
         }
-        bb<-A%*%a
-        b<-bb[1:k]
-        v<-bb[(k+1):(k+m)]
-        u<-D%*%v
-        if(method=="1") {
-                loglik=-(n*log(2*pi*s0)-log(det(W))+n)/2
-        } else if(method=="2") {
+        
+        bb <- A%*%a
+        b <- bb[1:k]
+        v <- bb[(k+1):(k+m)]
+        u <- D%*%v
+        if(method == "1") {
+                loglik <- -(n*log(2*pi*s0)-log(det(W))+n)/2
+        } else if(method == "2") {
                 # loglik=-((n-rx)*log(2*pi*s0)-log(det(T))+(n-rx))/2
                 # Here is the adjusted loglik version - like in SAS
                 loglik <- -((n-rx) * log(2*pi*s0) - log(det(T)) + (n-rx))/2 - log(det(t(X)%*%X))/2 
@@ -811,36 +830,36 @@ mixed <- function(y, X, Z, dim, s20, method, lambda, adaptRW) {
         # ======================================================================
         # FISHER INFORMATION MATRIX FOR VARIANCE COMPONENTS
         # ======================================================================
-        Is2<-diag(r+1)
-        if (method=="2" || method=="4") {
+        Is2 <- diag(r+1)
+        if (method == "2" || method == "4") {
                 W<-T
-                Is2[r+1,r+1]<-(n-rx-m+matrix.trace(W%*%W))/(s2[r+1]*s2[r+1]) #%VW
+                Is2[r+1,r+1] <- (n-rx-m+matrix.trace(W%*%W))/(s2[r+1]*s2[r+1]) #%VW
         } else {
-                Is2[r+1,r+1]<-(n-m+matrix.trace(W%*%W))/(s2[r+1]*s2[r+1])
+                Is2[r+1,r+1] <- (n-m+matrix.trace(W%*%W))/(s2[r+1]*s2[r+1])
         }
         
-        iupp<-0
+        iupp <- 0
         for(i in 1:r) {
-                ilow<-iupp+1
-                iupp<-iupp+dim[i]
-                trii<-matrix.trace(as.matrix(W[ilow:iupp,ilow:iupp]))
-                trsum<-0
-                jupp<-0
+                ilow <- iupp+1
+                iupp <- iupp+dim[i]
+                trii <- matrix.trace(as.matrix(W[ilow:iupp,ilow:iupp]))
+                trsum <- 0
+                jupp <- 0
                 for(j in 1:r) {
-                        jlow<-jupp+1
-                        jupp<-jupp+dim[j]
-                        tr<-matrix.trace(as.matrix(W[ilow:iupp,jlow:jupp]%*%W[jlow:jupp,ilow:iupp]))
-                        trsum<-trsum+tr
-                        Is2[i,j]<-(1*(i==j)*(dim[i]-2*trii)+tr)/(s2[i]*s2[j])
+                        jlow <- jupp+1
+                        jupp <- jupp+dim[j]
+                        tr <- matrix.trace(as.matrix(W[ilow:iupp,jlow:jupp]%*%W[jlow:jupp,ilow:iupp]))
+                        trsum <- trsum+tr
+                        Is2[i,j] <- (1*(i == j)*(dim[i]-2*trii)+tr)/(s2[i]*s2[j])
                 }
-                Is2[r+1,i]<-(trii-trsum)/(s2[r+1]*s2[i])
-                Is2[i,r+1]<-Is2[r+1,i]
+                Is2[r+1,i] <- (trii-trsum)/(s2[r+1]*s2[i])
+                Is2[i,r+1] <- Is2[r+1,i]
         }
-        Is2<-Is2/2
+        Is2 <- Is2/2
         # ======================================================================
         # EOF MIXED.M
         # ======================================================================
-        result<-list("s2" = as.vector(s2), "b" = b, "u" = u, "Is2" = Is2, "C" = C, "H" = H, "q" = q, "loglik" = loglik, "loops" = loops)
+        result <- list("s2" = as.vector(s2), "b" = b, "u" = u, "Is2" = Is2, "C" = C, "H" = H, "q" = q, "loglik" = loglik, "loops" = loops)
         return(result)
 }
 
